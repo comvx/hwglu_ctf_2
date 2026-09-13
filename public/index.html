@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HWG-LU // CTF Session Manager v2.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #000000;
+    --phosphor: #00ff41;
+    --phosphor-dim: #008f11;
+    --phosphor-deep: #005f0a;
+    --amber: #ffb000;
+    --alarm: #ff003c;
+    --cyan-ghost: rgba(0, 255, 255, 0.4);
+    --red-ghost: rgba(255, 0, 60, 0.4);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    background: var(--bg);
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: 'JetBrains Mono', ui-monospace, 'Menlo', 'Consolas', monospace;
+    color: var(--phosphor);
+    line-height: 1.6;
+    padding: 32px 16px;
+    font-size: 14px;
+    min-height: 100vh;
+    overflow-x: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.18) 0,
+      rgba(0, 0, 0, 0.18) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    pointer-events: none;
+    z-index: 100;
+    will-change: transform;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    box-shadow:
+      inset 0 0 220px rgba(0, 0, 0, 0.85),
+      inset 0 0 60px rgba(0, 40, 10, 0.25);
+    pointer-events: none;
+    z-index: 99;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    body { animation: flicker 0.15s infinite; }
+    body::after { animation: scanDrift 8s linear infinite; }
+    @keyframes flicker {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0.97; }
+    }
+    @keyframes scanDrift {
+      0% { transform: translateY(0); }
+      100% { transform: translateY(3px); }
+    }
+  }
+
+  .wrap {
+    width: 100%;
+    max-width: 720px;
+    position: relative;
+    z-index: 1;
+  }
+
+  pre.header {
+    color: var(--phosphor);
+    white-space: pre;
+    font-size: 13px;
+    line-height: 1.35;
+    margin: 0 0 26px;
+    overflow-x: auto;
+    text-shadow:
+      0 0 2px var(--phosphor),
+      0 0 6px rgba(0, 255, 65, 0.35);
+  }
+
+  .boot {
+    color: var(--phosphor-dim);
+    font-size: 12.5px;
+    line-height: 1.7;
+    margin: 0 0 24px;
+  }
+
+  .boot .amber { color: var(--amber); }
+  .boot .ok    { color: var(--phosphor); }
+  .boot .warn  { color: var(--alarm); }
+
+  .prompt {
+    color: var(--phosphor-dim);
+    font-size: 13px;
+    margin: 0 0 6px;
+  }
+  .prompt .user { color: var(--phosphor); }
+  .prompt .path { color: var(--amber); }
+  .prompt .cmd  { color: var(--phosphor); }
+
+  .input-line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 8px 0 4px;
+    flex-wrap: wrap;
+  }
+  .input-line .dollar {
+    color: var(--phosphor-dim);
+    font-weight: 700;
+    user-select: none;
+  }
+
+  input[type="text"] {
+    background: #000;
+    color: var(--phosphor);
+    border: 1px solid var(--phosphor-dim);
+    padding: 10px 12px;
+    font-family: inherit;
+    font-size: 14px;
+    flex: 1 1 220px;
+    min-width: 200px;
+    caret-color: var(--amber);
+    outline: none;
+    border-radius: 0;
+    transition: border-color 0.12s ease;
+  }
+  input[type="text"]:focus {
+    border-color: var(--phosphor);
+    box-shadow: 0 0 0 1px var(--phosphor);
+  }
+  input::placeholder { color: var(--phosphor-deep); opacity: 1; }
+
+  button {
+    background: transparent;
+    border: 1px solid var(--phosphor);
+    color: var(--phosphor);
+    padding: 9px 18px;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 0;
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  button:hover,
+  button:focus-visible {
+    background: var(--phosphor);
+    color: #000;
+    outline: none;
+  }
+  button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: transparent;
+    color: var(--phosphor);
+  }
+
+  .cursor {
+    display: inline-block;
+    width: 0.6em;
+    color: var(--phosphor);
+    text-shadow: 0 0 4px var(--phosphor);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .cursor { animation: blink 1s steps(2, start) infinite; }
+    @keyframes blink {
+      0%, 50%   { opacity: 1; }
+      51%, 100% { opacity: 0; }
+    }
+  }
+
+  .hint {
+    color: var(--phosphor-deep);
+    font-size: 12px;
+    margin-top: 14px;
+    letter-spacing: 0.02em;
+  }
+  .hint code { color: var(--amber); }
+
+  #log {
+    margin-top: 18px;
+    padding-top: 12px;
+    border-top: 1px solid var(--phosphor-deep);
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: var(--phosphor-dim);
+    white-space: pre-wrap;
+    min-height: 40px;
+  }
+  #log .ok   { color: var(--phosphor); }
+  #log .warn { color: var(--amber); }
+  #log .err  { color: var(--alarm); }
+
+  .err-box {
+    display: none;
+    margin-top: 14px;
+    padding: 10px 14px;
+    border: 1px solid var(--alarm);
+    color: var(--alarm);
+    font-size: 13px;
+  }
+  .err-box.show { display: block; }
+
+  #fade {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease-in;
+    z-index: 500;
+  }
+  #fade.on { opacity: 1; pointer-events: auto; }
+
+  ::selection { background: var(--phosphor); color: #000; }
+</style>
+</head>
+<body>
+
+<div class="wrap" id="shell">
+<pre class="header">╔═══════════════════════════════════════╗
+║  HWG-LU // CTF SESSION MANAGER v2.0   ║
+╚═══════════════════════════════════════╝</pre>
+
+<div class="boot" id="boot">
+<span class="amber">[boot]</span> initializing session shell...
+<span class="ok">[+]</span> crypto module          <span class="ok">ok</span>
+<span class="ok">[+]</span> flag oracle            <span class="ok">online</span>
+<span class="ok">[+]</span> personalization layer  <span class="ok">standby</span>
+</div>
+
+<div class="prompt">
+  <span class="user">guest@hwglu</span>:<span class="path">~/ctf/ch2</span>$ <span class="cmd">authenticate --uid=</span><span class="cursor">▊</span>
+</div>
+
+<form id="loginForm" autocomplete="off" onsubmit="return false;">
+  <div class="input-line">
+    <span class="dollar">$</span>
+    <input
+      type="text"
+      id="uid"
+      inputmode="text"
+      autocomplete="off"
+      spellcheck="false"
+      placeholder="matrikelnummer eingeben..."
+      maxlength="32"
+      required
+    >
+    <button type="submit" id="submitBtn">&gt; connect</button>
+  </div>
+  <div class="hint">
+    UID = Matrikelnummer. Flags werden pro UID personalisiert.
+    Optional: <code>?uid=12345678</code> in der URL.
+  </div>
+</form>
+
+<div class="err-box" id="err"></div>
+<div id="log"></div>
+
+</div><!-- /.wrap -->
+
+<div id="fade"></div>
+
+<script>
+"use strict";
+
+// ------------------------------------------------------------------
+// State
+// ------------------------------------------------------------------
+const $uid     = document.getElementById("uid");
+const $form    = document.getElementById("loginForm");
+const $btn     = document.getElementById("submitBtn");
+const $log     = document.getElementById("log");
+const $err     = document.getElementById("err");
+const $fade    = document.getElementById("fade");
+const noMotion = window.matchMedia
+  && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// ------------------------------------------------------------------
+// URL / sessionStorage prefill
+// ------------------------------------------------------------------
+(function prefill() {
+  const params = new URLSearchParams(location.search);
+  const fromUrl   = params.get("uid") || params.get("matrikel");
+  const fromStore = sessionStorage.getItem("ctf2:matrikel");
+  const val = fromUrl || fromStore;
+  if (val) $uid.value = val.trim();
+  $uid.focus();
+})();
+
+// ------------------------------------------------------------------
+// Auto-connect if session cached
+// ------------------------------------------------------------------
+(function autoConnect() {
+  const cached = sessionStorage.getItem("ctf2:placeholders");
+  const cachedUid = sessionStorage.getItem("ctf2:matrikel");
+  const params = new URLSearchParams(location.search);
+  if (params.has("logout")) {
+    sessionStorage.removeItem("ctf2:placeholders");
+    sessionStorage.removeItem("ctf2:matrikel");
+    history.replaceState({}, "", location.pathname);
+    return;
+  }
+  if (cached && cachedUid) {
+    // Fast-path: skip typewriter, jump right in
+    try {
+      const placeholders = JSON.parse(cached);
+      renderChallenge(placeholders, /*fast=*/true);
+    } catch { /* corrupt cache — ignore */ }
+  }
+})();
+
+// ------------------------------------------------------------------
+// Submit handler
+// ------------------------------------------------------------------
+$form.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const uid = $uid.value.trim();
+  hideErr();
+  if (!uid) { showErr("[-] EMPTY UID. authentication aborted."); return; }
+  if (!/^[0-9A-Za-z._-]{3,32}$/.test(uid)) {
+    showErr("[-] INVALID UID FORMAT :: nur Ziffern/Buchstaben, 3-32 Zeichen.");
+    return;
+  }
+
+  $btn.disabled = true;
+  $uid.disabled = true;
+  $log.innerHTML = "";
+
+  const steps = [
+    { text: "[+] resolving oracle endpoint...", cls: "" },
+    { text: "[+] tls handshake                 ok", cls: "ok" },
+    { text: "[+] session key negotiated        ok", cls: "ok" },
+    { text: "[+] loading exploit chain         ok", cls: "ok" },
+  ];
+
+  const fetchPromise = fetch("/api/flags", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ matrikel: uid }),
+  });
+
+  await typewriteLines(steps, /*totalMs=*/900);
+
+  let resp, data;
+  try {
+    resp = await fetchPromise;
+    data = await resp.json();
+  } catch (e) {
+    appendLog("[-] network error :: " + e.message, "err");
+    $btn.disabled = false; $uid.disabled = false;
+    return;
+  }
+
+  if (!resp.ok || !data.ok) {
+    appendLog("[-] oracle rejected request :: "
+      + (data && data.error ? data.error : ("http " + resp.status)), "err");
+    $btn.disabled = false; $uid.disabled = false;
+    return;
+  }
+
+  appendLog("[+] session established          ok", "ok");
+  await sleep(220);
+  appendLog("[+] delivering personalized payload...", "warn");
+  await sleep(180);
+
+  sessionStorage.setItem("ctf2:matrikel", uid);
+  sessionStorage.setItem("ctf2:placeholders", JSON.stringify(data.placeholders));
+
+  await fadeOut();
+  renderChallenge(data.placeholders, /*fast=*/false);
+});
+
+// ------------------------------------------------------------------
+// Challenge renderer
+// ------------------------------------------------------------------
+async function renderChallenge(placeholders, fast) {
+  let template;
+  try {
+    const r = await fetch("/challenge.html", { cache: "no-store" });
+    if (!r.ok) throw new Error("challenge.html http " + r.status);
+    template = await r.text();
+  } catch (e) {
+    document.body.innerHTML = "";
+    document.body.style.color = "#ff003c";
+    document.body.textContent = "[fatal] failed to load challenge: " + e.message;
+    return;
+  }
+
+  const html = substituteAll(template, placeholders);
+
+  // document.open/write/close ist der einzige zuverlässige Weg,
+  // ein komplettes HTML-Dokument inkl. inline-<script>s zu ersetzen.
+  document.open("text/html", "replace");
+  document.write(html);
+  document.close();
+}
+
+function substituteAll(template, placeholders) {
+  // Alle {{KEY}}-Vorkommen ersetzen. Reihenfolge egal, weil Keys
+  // untereinander disjunkt sind.
+  return template.replace(/\{\{([A-Z0-9_]+)\}\}/g, (m, k) => {
+    if (Object.prototype.hasOwnProperty.call(placeholders, k)) {
+      return placeholders[k];
+    }
+    return m; // unbekannter Placeholder: unangetastet lassen (fällt beim QA auf)
+  });
+}
+
+// ------------------------------------------------------------------
+// UI helpers
+// ------------------------------------------------------------------
+function appendLog(text, cls) {
+  const span = document.createElement("div");
+  if (cls) span.className = cls;
+  span.textContent = text;
+  $log.appendChild(span);
+}
+
+async function typewriteLines(lines, totalMs) {
+  if (noMotion) {
+    for (const l of lines) appendLog(l.text, l.cls);
+    return;
+  }
+  const per = Math.max(120, Math.floor(totalMs / lines.length));
+  for (const l of lines) {
+    appendLog(l.text, l.cls);
+    await sleep(per);
+  }
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function showErr(msg) {
+  $err.textContent = msg;
+  $err.classList.add("show");
+}
+function hideErr() {
+  $err.classList.remove("show");
+  $err.textContent = "";
+}
+
+async function fadeOut() {
+  if (noMotion) return;
+  $fade.classList.add("on");
+  await sleep(420);
+}
+</script>
+
+</body>
+</html>

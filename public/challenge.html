@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CTF Challenge 2 :: Web-Attacks :: {{NAME}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #000000;
+    --phosphor: #00ff41;
+    --phosphor-dim: #008f11;
+    --phosphor-deep: #005f0a;
+    --amber: #ffb000;
+    --alarm: #ff003c;
+    --cyan-ghost: rgba(0, 255, 255, 0.4);
+    --red-ghost: rgba(255, 0, 60, 0.4);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { background: var(--bg); }
+
+  body {
+    margin: 0;
+    font-family: 'JetBrains Mono', ui-monospace, 'Menlo', 'Consolas', monospace;
+    background: var(--bg);
+    color: var(--phosphor);
+    line-height: 1.6;
+    padding: 32px 16px 96px;
+    font-size: 14px;
+    font-weight: 400;
+    min-height: 100vh;
+    border-radius: 8px;
+    overflow-x: hidden;
+  }
+
+  /* CRT scanline overlay (fixed, above everything) */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.18) 0,
+      rgba(0, 0, 0, 0.18) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    pointer-events: none;
+    z-index: 100;
+    will-change: transform;
+  }
+
+  /* CRT vignette / inner glow */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    box-shadow: inset 0 0 220px rgba(0, 0, 0, 0.85), inset 0 0 60px rgba(0, 40, 10, 0.25);
+    pointer-events: none;
+    z-index: 99;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    body { animation: flicker 0.15s infinite; }
+    body::after { animation: scanDrift 8s linear infinite; }
+    @keyframes flicker {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.97; }
+    }
+    @keyframes scanDrift {
+      0% { transform: translateY(0); }
+      100% { transform: translateY(3px); }
+    }
+  }
+
+  .wrap {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 40px 60px;
+    position: relative;
+    z-index: 1;
+  }
+
+  @media (max-width: 720px) {
+    .wrap { padding: 24px 20px; }
+  }
+
+  /* ============================================================
+     Header (session card)
+     ============================================================ */
+  .session-card {
+    color: var(--phosphor-dim);
+    font-size: 13px;
+    white-space: pre;
+    line-height: 1.4;
+    margin-bottom: 28px;
+    overflow-x: auto;
+  }
+
+  .brand-title {
+    font-size: clamp(24px, 4.2vw, 40px);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--phosphor);
+    margin: 4px 0 6px;
+    text-shadow:
+      0 0 2px var(--phosphor),
+      0 0 8px rgba(0, 255, 65, 0.5),
+      1px 0 0 var(--red-ghost),
+      -1px 0 0 var(--cyan-ghost);
+  }
+
+  .brand-subtitle {
+    color: var(--phosphor-dim);
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 32px;
+  }
+
+  .brand-subtitle .amber { color: var(--amber); }
+
+  /* ============================================================
+     Section dividers & prompts
+     ============================================================ */
+  .ascii-divider {
+    color: var(--phosphor-dim);
+    font-size: 12px;
+    line-height: 1;
+    white-space: pre;
+    overflow-x: auto;
+    margin: 48px 0 20px;
+  }
+
+  .prompt-line {
+    color: var(--phosphor-dim);
+    font-size: 13px;
+    margin: 0 0 6px;
+    letter-spacing: 0.02em;
+  }
+
+  .prompt-line .user { color: var(--phosphor); }
+  .prompt-line .path { color: var(--amber); }
+  .prompt-line .cmd { color: var(--phosphor); }
+
+  .cursor {
+    display: inline-block;
+    width: 0.6em;
+    color: var(--phosphor);
+    text-shadow: 0 0 4px var(--phosphor);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .cursor { animation: blink 1s steps(2, start) infinite; }
+    @keyframes blink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0; }
+    }
+  }
+
+  /* ============================================================
+     Section blocks
+     ============================================================ */
+  section.flag {
+    margin: 8px 0 32px;
+    padding: 0;
+    border: none;
+    background: transparent;
+  }
+
+  section.flag > h2 {
+    margin: 4px 0 8px;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--phosphor);
+    text-shadow: 0 0 2px var(--phosphor), 0 0 8px rgba(0, 255, 65, 0.35);
+  }
+
+  section.flag > h2 .flag-tag {
+    color: var(--amber);
+    margin-right: 12px;
+  }
+
+  .diff-row {
+    color: var(--phosphor-dim);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin: 4px 0 16px;
+  }
+
+  .diff-bar {
+    color: var(--phosphor);
+    letter-spacing: 0;
+    margin-right: 10px;
+  }
+
+  .diff-bar .empty { color: var(--phosphor-deep); }
+
+  .tag {
+    display: inline-block;
+    color: var(--phosphor-dim);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    margin-left: 8px;
+    text-transform: uppercase;
+  }
+  .tag::before { content: "["; }
+  .tag::after { content: "]"; }
+
+  /* Story / attack-surface / lab as terminal-output blocks */
+  .story {
+    color: #90c8a0;
+    font-size: 13.5px;
+    line-height: 1.7;
+    padding: 12px 0 12px 16px;
+    border-left: 1px solid var(--phosphor-deep);
+    margin: 14px 0;
+  }
+
+  .story em { color: var(--amber); font-style: normal; }
+  .story strong { color: var(--phosphor); font-weight: 700; }
+
+  .attack-surface {
+    border: 1px solid var(--phosphor-dim);
+    padding: 14px 16px;
+    margin: 14px 0;
+    font-size: 13px;
+    color: var(--phosphor);
+    background: transparent;
+    position: relative;
+  }
+
+  .attack-surface .label {
+    display: inline-block;
+    color: var(--amber);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 11px;
+    margin-bottom: 6px;
+  }
+
+  .attack-surface ul {
+    margin: 8px 0 0;
+    padding-left: 20px;
+    color: #90c8a0;
+  }
+  .attack-surface ul li { margin: 4px 0; }
+  .attack-surface ul li::marker { color: var(--phosphor-dim); }
+
+  .lab {
+    border: 1px solid var(--phosphor-dim);
+    padding: 18px;
+    margin: 16px 0;
+    background: transparent;
+    position: relative;
+  }
+
+  .lab::before {
+    content: "// LAB";
+    position: absolute;
+    top: -8px;
+    left: 12px;
+    background: var(--bg);
+    padding: 0 8px;
+    color: var(--phosphor-dim);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+  }
+
+  .lab p { margin: 0 0 10px; }
+  .lab .muted { color: var(--phosphor-deep); font-size: 12.5px; }
+
+  /* ============================================================
+     Inputs, buttons, prompts
+     ============================================================ */
+  .input-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 10px 0;
+  }
+  .input-line .dollar {
+    color: var(--phosphor-dim);
+    font-weight: 700;
+    user-select: none;
+  }
+
+  input[type="text"],
+  input[type="password"],
+  textarea {
+    background: #000;
+    color: var(--phosphor);
+    border: 1px solid var(--phosphor-dim);
+    padding: 8px 12px;
+    font-family: inherit;
+    font-size: 13.5px;
+    width: 100%;
+    max-width: 440px;
+    caret-color: var(--amber);
+    outline: none;
+    border-radius: 0;
+    transition: border-color 0.15s ease;
+  }
+
+  input[type="text"]:focus,
+  input[type="password"]:focus,
+  textarea:focus {
+    border-color: var(--phosphor);
+    box-shadow: 0 0 0 1px var(--phosphor);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--phosphor-deep);
+    opacity: 1;
+  }
+
+  textarea {
+    min-height: 100px;
+    max-width: 100%;
+    resize: vertical;
+    line-height: 1.5;
+  }
+
+  button {
+    background: transparent;
+    border: 1px solid var(--phosphor);
+    color: var(--phosphor);
+    padding: 8px 20px;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 0;
+    transition: background 0.12s ease, color 0.12s ease;
+    margin: 6px 6px 0 0;
+  }
+  button:hover,
+  button:focus-visible {
+    background: var(--phosphor);
+    color: #000;
+    outline: none;
+  }
+  button.secondary {
+    border-color: var(--phosphor-dim);
+    color: var(--phosphor-dim);
+  }
+  button.secondary:hover,
+  button.secondary:focus-visible {
+    background: var(--phosphor-dim);
+    color: #000;
+  }
+
+  code, pre {
+    font-family: inherit;
+    background: transparent;
+    color: var(--amber);
+    padding: 0;
+  }
+  pre {
+    display: block;
+    padding: 10px 14px;
+    margin: 10px 0;
+    color: var(--amber);
+    border: 1px solid var(--phosphor-deep);
+    background: transparent;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  /* ============================================================
+     Status / result blocks
+     ============================================================ */
+  .status {
+    margin-top: 12px;
+    padding: 10px 14px;
+    font-size: 13px;
+    display: none;
+    border: 1px solid transparent;
+    line-height: 1.55;
+    white-space: pre-wrap;
+  }
+  .status.ok {
+    display: block;
+    border-color: var(--phosphor);
+    color: var(--phosphor);
+    text-shadow: 0 0 2px var(--phosphor), 0 0 8px rgba(0, 255, 65, 0.35);
+  }
+  .status.err {
+    display: block;
+    border-color: var(--alarm);
+    color: var(--alarm);
+  }
+  .status.info {
+    display: block;
+    border-color: var(--phosphor-dim);
+    color: var(--phosphor);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .status.err.shake { animation: glitch-shake 0.2s linear 3; }
+    @keyframes glitch-shake {
+      0%   { transform: translateX(0); }
+      25%  { transform: translateX(-3px); }
+      50%  { transform: translateX(3px); }
+      75%  { transform: translateX(-2px); }
+      100% { transform: translateX(0); }
+    }
+  }
+
+  /* ============================================================
+     Hint (toggle)
+     ============================================================ */
+  .hint { margin-top: 16px; font-size: 13px; }
+  .hint details { cursor: pointer; }
+  .hint summary {
+    color: var(--amber);
+    user-select: none;
+    padding: 4px 0;
+    list-style: none;
+    letter-spacing: 0.05em;
+  }
+  .hint summary::-webkit-details-marker { display: none; }
+  .hint summary::before { content: "[?] "; color: var(--phosphor-dim); }
+  .hint details[open] summary::before { content: "[-] "; color: var(--phosphor); }
+  .hint .hint-body {
+    margin-top: 10px;
+    padding: 12px 16px;
+    border: 1px dashed var(--phosphor-dim);
+    color: #a0d0b0;
+    font-size: 12.5px;
+    line-height: 1.7;
+  }
+  .hint .hint-body p { margin: 6px 0; }
+  .hint .hint-body strong { color: var(--phosphor); }
+  .hint .hint-body code { color: var(--amber); }
+  .hint-title {
+    color: var(--phosphor-dim);
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  /* ============================================================
+     Flag 2 badge, Flag 5 sandbox
+     ============================================================ */
+  #f2-userbadge {
+    display: inline-block;
+    padding: 2px 10px;
+    border: 1px solid var(--phosphor-deep);
+    margin-left: 6px;
+    color: var(--amber);
+    font-size: 13px;
+    text-transform: lowercase;
+  }
+
+  #f2-panel {
+    display: none;
+    margin-top: 14px;
+    padding: 12px 14px;
+    border: 1px solid var(--phosphor);
+    color: var(--phosphor);
+  }
+  #f2-panel p { margin: 4px 0; }
+  #f2-panel strong { color: var(--amber); }
+
+  #f5-sandbox {
+    min-height: 60px;
+    padding: 12px;
+    border: 1px solid var(--phosphor-dim);
+    color: var(--phosphor);
+    margin-top: 4px;
+    background: transparent;
+  }
+
+  .sandbox-label {
+    color: var(--phosphor-dim);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin: 14px 0 4px;
+  }
+
+  /* ============================================================
+     Footer
+     ============================================================ */
+  .banner {
+    color: var(--phosphor-deep);
+    font-size: 12px;
+    margin-top: 56px;
+    padding-top: 20px;
+    border-top: 1px solid var(--phosphor-deep);
+    letter-spacing: 0.03em;
+    line-height: 1.7;
+  }
+  .banner .amber { color: var(--amber); }
+
+  /* Emphasize inline code in story / attack-surface */
+  .story code,
+  .attack-surface code { color: var(--amber); }
+
+  /* Selection */
+  ::selection { background: var(--phosphor); color: #000; }
+
+  /* ============================================================
+     Reveal animations (staggered fade-in)
+     ============================================================ */
+  @media (prefers-reduced-motion: no-preference) {
+    section.flag,
+    .session-card,
+    .brand-title,
+    .brand-subtitle {
+      opacity: 0;
+      transform: translateY(6px);
+      animation: fadeUp 0.4s ease-out forwards;
+    }
+    .session-card { animation-delay: 0.05s; }
+    .brand-title { animation-delay: 0.15s; }
+    .brand-subtitle { animation-delay: 0.25s; }
+    section#flag1 { animation-delay: 0.35s; }
+    section#flag2 { animation-delay: 0.42s; }
+    section#flag3 { animation-delay: 0.49s; }
+    section#flag4 { animation-delay: 0.56s; }
+    section#flag5 { animation-delay: 0.63s; }
+
+    @keyframes fadeUp {
+      to { opacity: 1; transform: translateY(0); }
+    }
+  }
+</style>
+
+<!--
+==================================================================
+  HWG-LU IT-SICHERHEIT :: WS 2025/26
+  Challenge 2: Web-Attacks (client-side)
+
+  Persoenliche Datei fuer: {{NAME}} ({{MATRIKEL}})
+  Alle Flags sind pro Student unique. Absprache/Copy von Flags
+  eines anderen Kommilitonen wird beim Einreichen erkannt.
+
+  Viel Erfolg. Wenn Sie hier drin nach der Flag suchen:
+  Das ist grundsaetzlich der richtige Instinkt. Aber nicht jede
+  Flag steht direkt im Quelltext, manche werden erst durch die
+  Attacke berechnet.
+==================================================================
+-->
+</head>
+<body>
+
+<div class="wrap">
+
+<pre class="session-card">┌─────────────────────────────────────────────────────────────┐
+│ SESSION  : CH2 / WEB / CLIENT-SIDE                          │
+│ USER     : {{NAME}}
+│ UID      : {{MATRIKEL}}
+│ FLAGS    : 5                                                │
+└─────────────────────────────────────────────────────────────┘</pre>
+
+<h1 class="brand-title">Web-Attacks :: Client-Side<span class="cursor">▊</span></h1>
+<div class="brand-subtitle">
+  <span class="amber">[ramp]</span> devtools &gt; localstorage &gt; regex-bypass &gt; prototype-pollution &gt; dom-clobbering
+</div>
+
+
+<!-- ============================================================
+     FLAG 1 :: DevTools inspect
+     ============================================================ -->
+<pre class="ascii-divider">╔═════════════════════════════════════════════════════════════╗
+║  FLAG 01 :: DEVTOOLS · HTML-INSPEKTION                      ║
+╚═════════════════════════════════════════════════════════════╝</pre>
+
+<section class="flag" id="flag1">
+  <div class="prompt-line">
+    <span class="user">root@ctf</span>:<span class="path">~/ch2/flag-01</span>$ <span class="cmd">cat mission.txt</span><span class="cursor">▊</span>
+  </div>
+
+  <h2><span class="flag-tag">[FLAG 01]</span>Der versteckte Kommentar<span class="tag">easy · ~5min</span></h2>
+  <div class="diff-row">
+    <span class="diff-bar">[<span>█</span><span class="empty">░░░░</span>]</span>
+    difficulty 1/5 · devtools · html-inspektion
+  </div>
+
+  <div class="story">
+    Ein Entwickler hat eine Debug-Notiz im DOM vergessen. Bevor die Seite in Produktion ging,
+    wurde sie einfach per CSS ausgeblendet. Das ist keine Sicherheit. Finden Sie die Notiz.
+  </div>
+
+  <div class="attack-surface">
+    <span class="label">[!] Angriffsflaeche</span><br>
+    Der HTML-Quelltext dieser Seite. Oeffnen Sie die Developer Tools (F12 / Cmd+Opt+I)
+    und schauen Sie sich den DOM-Baum an.
+  </div>
+
+  <div class="lab">
+    <p class="muted">// nichts zu sehen? genau. sehen Sie genauer hin.</p>
+
+    <!-- versteckter Flag-Traeger: kombiniert 3 Techniken didaktisch -->
+    <div id="f1-hidden-box" style="display:none;" data-note="{{CH2_F1_FLAG}}">
+      DEBUG-INFO :: nicht in produktion anzeigen
+    </div>
+    <!-- Alternative Fundstelle fuer Studenten die den Kommentar zuerst sehen: {{CH2_F1_FLAG}} -->
+  </div>
+
+  <div class="input-line">
+    <span class="dollar">$</span>
+    <input type="text" id="f1-input" placeholder="FLAG{...}" autocomplete="off" spellcheck="false">
+    <button onclick="checkFlag(1)">&gt; execute</button>
+  </div>
+  <div class="status" id="f1-status"></div>
+
+  <div class="hint">
+    <details>
+      <summary>show hint</summary>
+      <div class="hint-body">
+        <div class="hint-title">─── hint ───</div>
+        <p><strong>Tipp:</strong> Rechtsklick, "Element untersuchen" auf den Kasten oberhalb.
+        Dann durch den DOM navigieren. Achten Sie auf HTML-Attribute (<code>data-*</code>)
+        und HTML-Kommentare (<code>&lt;!-- ... --&gt;</code>).</p>
+        <p><strong>Alternative:</strong> Menue &gt; View &gt; Developer &gt; View Source (oder
+        <code>Cmd+U</code> im Browser).</p>
+      </div>
+    </details>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     FLAG 2 :: localStorage Tampering
+     ============================================================ -->
+<pre class="ascii-divider">╔═════════════════════════════════════════════════════════════╗
+║  FLAG 02 :: LOCALSTORAGE · SESSION TAMPERING                ║
+╚═════════════════════════════════════════════════════════════╝</pre>
+
+<section class="flag" id="flag2">
+  <div class="prompt-line">
+    <span class="user">root@ctf</span>:<span class="path">~/ch2/flag-02</span>$ <span class="cmd">./privesc.sh</span><span class="cursor">▊</span>
+  </div>
+
+  <h2><span class="flag-tag">[FLAG 02]</span>Der Guest, der Admin sein wollte<span class="tag">easy-medium · ~10-15min</span></h2>
+  <div class="diff-row">
+    <span class="diff-bar">[<span>██</span><span class="empty">░░░</span>]</span>
+    difficulty 2/5 · localstorage · client-side session tampering
+  </div>
+
+  <div class="story">
+    Diese Seite simuliert einen Login. Die Zugangsdaten fuer den Test-Account (User
+    <code>admin</code>, Passwort <code>admin</code>) sind absichtlich bekannt. Das Backend
+    (das hier komplett clientseitig laeuft) prueft zusaetzlich die Rolle.
+    Nur Nutzer mit Rolle <code>admin</code> sehen die Flag.
+    <br><br>
+    Sie sind eingeloggt <em>als</em> admin, aber Ihre Rolle ist <code>guest</code>.
+    Erhoehen Sie Ihre Privilegien.
+  </div>
+
+  <div class="attack-surface">
+    <span class="label">[!] Angriffsflaeche</span><br>
+    Der Browser speichert die Rolle in <code>localStorage</code>. Alles was der Client
+    speichert, kann der Client aendern. Dieser Grundsatz ist der Ursprung des Satzes
+    "never trust the client".
+  </div>
+
+  <div class="lab">
+    <p>
+      user: <strong style="color:var(--amber)">admin</strong>
+      &nbsp;·&nbsp;
+      role: <span id="f2-userbadge">guest</span>
+    </p>
+    <button onclick="f2Login()">&gt; enter admin panel</button>
+    <button class="secondary" onclick="f2Reset()">reset :: role=guest</button>
+    <div id="f2-panel">
+      <p><strong>[+] ADMIN PANEL :: ACCESS GRANTED</strong></p>
+      <p>reward: <code id="f2-flag-reveal"></code></p>
+    </div>
+  </div>
+
+  <div class="input-line">
+    <span class="dollar">$</span>
+    <input type="text" id="f2-input" placeholder="FLAG{...}" autocomplete="off" spellcheck="false">
+    <button onclick="checkFlag(2)">&gt; execute</button>
+  </div>
+  <div class="status" id="f2-status"></div>
+
+  <div class="hint">
+    <details>
+      <summary>show hint</summary>
+      <div class="hint-body">
+        <div class="hint-title">─── hint ───</div>
+        <p><strong>Tipp 1:</strong> DevTools &gt; Tab "Application" (Chrome) oder "Storage" (Firefox).
+        Dort finden Sie unter "Local Storage" die Domain und den Schluessel <code>role</code>.</p>
+        <p><strong>Tipp 2:</strong> Direkt in der Console:
+        <code>localStorage.setItem('role', 'admin')</code>. Danach den "Admin-Panel"-Button erneut klicken.</p>
+        <p><strong>Denkanstoss:</strong> Die Flag wird nicht "aus der Rolle abgeleitet",
+        sie steckt im JavaScript-Code. Ihre Anzeige ist ans role==='admin' geknuepft.
+        In echten Systemen waere die Autorisierung serverseitig, dann funktioniert
+        dieses Tampering natuerlich nicht.</p>
+      </div>
+    </details>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     FLAG 3 :: Client-side Regex Bypass
+     ============================================================ -->
+<pre class="ascii-divider">╔═════════════════════════════════════════════════════════════╗
+║  FLAG 03 :: CLIENT-SIDE VALIDATION BYPASS                   ║
+╚═════════════════════════════════════════════════════════════╝</pre>
+
+<section class="flag" id="flag3">
+  <div class="prompt-line">
+    <span class="user">root@ctf</span>:<span class="path">~/ch2/flag-03</span>$ <span class="cmd">./coupon-redeem.sh</span><span class="cursor">▊</span>
+  </div>
+
+  <h2><span class="flag-tag">[FLAG 03]</span>Der Coupon, der nicht passt<span class="tag">medium · ~30-60min</span></h2>
+  <div class="diff-row">
+    <span class="diff-bar">[<span>███</span><span class="empty">░░</span>]</span>
+    difficulty 3/5 · client-side validation bypass · function override
+  </div>
+
+  <div class="story">
+    Ein Shop hat Ihnen einen exklusiven Coupon-Code per E-Mail geschickt. Beim
+    Eingabe-Feld wird der Code sofort abgelehnt. Meldung: "ungueltiges Format".
+    <br><br>
+    Der Coupon <em>ist</em> gueltig (der Server, den es hier nicht gibt, wuerde ihn
+    akzeptieren). Aber die clientseitige Validierung ist zu strikt.
+    Bypassen Sie die Validierung.
+  </div>
+
+  <div class="attack-surface">
+    <span class="label">[!] Angriffsflaeche</span><br>
+    Die JS-Funktion <code>f3_validate()</code> und <code>f3_check()</code>. Beide
+    leben im globalen Namensraum und koennen in der Console ueberschrieben werden.
+  </div>
+
+  <div class="lab">
+    <p class="muted">// ihr persoenlicher coupon (aus der e-mail):</p>
+    <pre>{{CH2_F3_COUPON}}</pre>
+
+    <div class="input-line">
+      <span class="dollar">$</span>
+      <input type="text" id="f3-coupon" placeholder="coupon-code eingeben..." autocomplete="off" spellcheck="false">
+      <button onclick="f3_submit()">&gt; redeem</button>
+    </div>
+    <div id="f3-result" style="margin-top: 12px;"></div>
+  </div>
+
+  <div class="input-line">
+    <span class="dollar">$</span>
+    <input type="text" id="f3-input" placeholder="FLAG{...}" autocomplete="off" spellcheck="false">
+    <button onclick="checkFlag(3)">&gt; execute</button>
+  </div>
+  <div class="status" id="f3-status"></div>
+
+  <div class="hint">
+    <details>
+      <summary>show hint</summary>
+      <div class="hint-body">
+        <div class="hint-title">─── hint ───</div>
+        <p><strong>Tipp 1:</strong> Schauen Sie sich die Funktion <code>f3_validate</code>
+        im Quelltext an. Die Regex ist zu naiv.</p>
+        <p><strong>Weg A (elegant):</strong> Ueberschreiben Sie in der Console:
+        <code>f3_validate = () =&gt; true</code>. Dann Button druecken.</p>
+        <p><strong>Weg B (direkt):</strong> Rufen Sie <code>f3_reveal(document.getElementById('f3-coupon').value)</code>
+        direkt auf, nachdem Sie den korrekten Coupon eingegeben haben.</p>
+        <p><strong>Warum das lehrreich ist:</strong> Clientseitige Validierung ist immer
+        nur UX. Jede Sicherheitsentscheidung muss serverseitig wiederholt werden.
+        Das ist der Kernfehler in unzaehligen Data-Breaches (Formulare, Preise, IDs).</p>
+      </div>
+    </details>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     FLAG 4 :: Prototype Pollution + Obfuscated Check
+     ============================================================ -->
+<pre class="ascii-divider">╔═════════════════════════════════════════════════════════════╗
+║  FLAG 04 :: PROTOTYPE POLLUTION · JS OBFUSKATION            ║
+╚═════════════════════════════════════════════════════════════╝</pre>
+
+<section class="flag" id="flag4">
+  <div class="prompt-line">
+    <span class="user">root@ctf</span>:<span class="path">~/ch2/flag-04</span>$ <span class="cmd">./polluteproto.js</span><span class="cursor">▊</span>
+  </div>
+
+  <h2><span class="flag-tag">[FLAG 04]</span>Der geerbte Admin<span class="tag">hard · ~1-3h</span></h2>
+  <div class="diff-row">
+    <span class="diff-bar">[<span>████</span><span class="empty">░</span>]</span>
+    difficulty 4/5 · prototype pollution · js obfuskation
+  </div>
+
+  <div class="story">
+    Diese "Konfigurations-App" nimmt JSON entgegen und merged es rekursiv in ein
+    internes User-Object. Danach wird geprueft, ob der Nutzer <code>isAdmin</code>
+    ist. Nur dann wird eine verschluesselte Nutzlast entschluesselt.
+    <br><br>
+    Standardmaessig sind Sie nicht admin. Aber der Merge-Algorithmus ist unsicher.
+    Er kopiert Werte nach <code>__proto__</code> ohne Pruefung. Damit koennen Sie
+    <code>Object.prototype.isAdmin = true</code> setzen und alle nachfolgenden
+    Objekte "erben" den Wert.
+  </div>
+
+  <div class="attack-surface">
+    <span class="label">[!] Angriffsflaeche</span><br>
+    Das JSON-Eingabefeld. Achten Sie besonders auf den Merge-Algorithmus in
+    <code>f4_deepMerge()</code>.
+    <br><br>
+    <span class="label">[+] Bonus</span><br>
+    Der finale Check ist absichtlich obfuskiert. Sie koennen ihn lesen (fleissig!)
+    oder einfach am Ergebnis erkennen, ob es klappt.
+  </div>
+
+  <div class="lab">
+    <p class="muted">// konfiguration als json:</p>
+    <textarea id="f4-json" placeholder='{"theme": "dark"}' spellcheck="false">{"theme": "dark"}</textarea>
+    <div>
+      <button onclick="f4_apply()">&gt; apply config</button>
+      <button class="secondary" onclick="f4_reset()">reset :: new user</button>
+    </div>
+    <div id="f4-result" style="margin-top: 12px;"></div>
+  </div>
+
+  <div class="input-line">
+    <span class="dollar">$</span>
+    <input type="text" id="f4-input" placeholder="FLAG{...}" autocomplete="off" spellcheck="false">
+    <button onclick="checkFlag(4)">&gt; execute</button>
+  </div>
+  <div class="status" id="f4-status"></div>
+
+  <div class="hint">
+    <details>
+      <summary>show hint (nur bei bedarf)</summary>
+      <div class="hint-body">
+        <div class="hint-title">─── hint ───</div>
+        <p><strong>Tipp 1 :: Prototype Pollution Payload:</strong></p>
+        <pre>{"__proto__": {"isAdmin": true}}</pre>
+        <p>Nach dem Uebernehmen erzeugen Sie einen <em>neuen</em> User (Reset). Dieser
+        neue User erbt <code>isAdmin: true</code> von <code>Object.prototype</code>.</p>
+        <p><strong>Tipp 2 :: Obfuskation lesen:</strong> Der Check nutzt
+        <code>atob()</code> um einen base64-kodierten String zu dekodieren. Das ist
+        keine Verschluesselung, nur Verstecken. Wenn Sie das Snippet in die Console
+        pasten und <code>console.log</code> aufrufen, sehen Sie was gemacht wird.</p>
+        <p><strong>Reale CVEs:</strong> lodash CVE-2019-10744, jQuery CVE-2019-11358,
+        minimist CVE-2020-7598. Prototype Pollution war jahrelang die #1
+        JS-supply-chain Bug-Klasse.</p>
+      </div>
+    </details>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     FLAG 5 :: DOM Clobbering + Sanitizer Bypass
+     ============================================================ -->
+<pre class="ascii-divider">╔═════════════════════════════════════════════════════════════╗
+║  FLAG 05 :: DOM CLOBBERING · SANITIZER BYPASS               ║
+╚═════════════════════════════════════════════════════════════╝</pre>
+
+<section class="flag" id="flag5">
+  <div class="prompt-line">
+    <span class="user">root@ctf</span>:<span class="path">~/ch2/flag-05</span>$ <span class="cmd">./clobber.sh</span><span class="cursor">▊</span>
+  </div>
+
+  <h2><span class="flag-tag">[FLAG 05]</span>Der sichere HTML-Renderer<span class="tag">very hard · ~3-8h</span></h2>
+  <div class="diff-row">
+    <span class="diff-bar">[<span>█████</span>]</span>
+    difficulty 5/5 · dom clobbering · sanitizer bypass · html injection
+  </div>
+
+  <div class="story">
+    Dieser "sichere HTML-Renderer" nimmt HTML entgegen, entfernt
+    <code>&lt;script&gt;</code>-Tags und JavaScript-URLs, und rendert dann das
+    Ergebnis. Er ist als "XSS-safe" beworben und ist auf den ersten Blick
+    tatsaechlich resistent gegen naives <code>&lt;script&gt;alert(1)&lt;/script&gt;</code>.
+    <br><br>
+    Aber im Renderer wird eine globale Konfiguration <code>window.appConfig</code>
+    ausgewertet. Wenn <code>appConfig.unlockFlag</code> auf einen bestimmten Wert
+    gesetzt ist, wird die Flag angezeigt. Diese Variable existiert normal nicht.
+    HTML-Elemente mit <code>id="appConfig"</code> ueberschreiben das JS-Objekt
+    (<strong>DOM Clobbering</strong>).
+    <br><br>
+    Ihr Ziel: HTML einschleusen, das den Sanitizer passiert und
+    <code>appConfig.unlockFlag</code> auf den erwarteten Wert clobbert.
+  </div>
+
+  <div class="attack-surface">
+    <span class="label">[!] Angriffsflaeche</span>
+    <ul>
+      <li>Der Sanitizer <code>f5_sanitize()</code>, schauen Sie sich seine Blacklist an.</li>
+      <li>Der Check <code>appConfig?.unlockFlag?.value === expected</code>.</li>
+      <li>HTML-Formulare erzeugen named-elements die sich wie Objects verhalten.</li>
+    </ul>
+  </div>
+
+  <div class="lab">
+    <p class="muted">// ihr html (wird "sicher" gerendert):</p>
+    <textarea id="f5-html" placeholder="<b>Hello</b>" spellcheck="false"><b>Hello world</b></textarea>
+    <div>
+      <button onclick="f5_render()">&gt; render</button>
+      <button class="secondary" onclick="f5_reset()">reset renderer</button>
+    </div>
+    <div class="sandbox-label">// sandbox :: sanitized output</div>
+    <div id="f5-sandbox"></div>
+    <div id="f5-result" style="margin-top: 12px;"></div>
+  </div>
+
+  <div class="input-line">
+    <span class="dollar">$</span>
+    <input type="text" id="f5-input" placeholder="FLAG{...}" autocomplete="off" spellcheck="false">
+    <button onclick="checkFlag(5)">&gt; execute</button>
+  </div>
+  <div class="status" id="f5-status"></div>
+
+  <div class="hint">
+    <details>
+      <summary>show hint (letzter ausweg)</summary>
+      <div class="hint-body">
+        <div class="hint-title">─── hint ───</div>
+        <p><strong>DOM Clobbering :: Kern-Idee:</strong> Wenn eine JS-Variable
+        <code>window.appConfig</code> nicht existiert, sucht der Browser als Fallback
+        nach einem HTML-Element mit <code>id="appConfig"</code>. Dieses Element ist
+        dann als globale Variable ansprechbar. Bei <code>&lt;form id="appConfig"&gt;</code>
+        werden zusaetzlich seine <code>&lt;input name="..."&gt;</code>-Children als
+        <em>Property-Access</em> nutzbar.</p>
+        <p><strong>Payload-Skelett:</strong></p>
+        <pre>&lt;form id="appConfig"&gt;
+  &lt;input name="unlockFlag" value="EXPECTED_VALUE"&gt;
+&lt;/form&gt;</pre>
+        <p>Der Renderer nutzt <code>appConfig.unlockFlag.value</code>, genau die
+        Zugriffskette die durch Form+Input erzeugt wird.</p>
+        <p><strong>Welcher Wert?</strong> Schauen Sie sich im JS-Quelltext die
+        Konstante <code>F5_EXPECTED_HASH</code> an. Der Renderer vergleicht
+        <code>sha256(unlockFlag.value)</code> mit diesem Hash. Sie muessen den
+        Klartext-Wert finden, dessen Hash passt. Der Klartext steht als
+        <code>{{CH2_F5_HIDDEN_VALUE}}</code> in einem HTML-Kommentar im
+        Renderer-Bereich unten. Verstecken auf verschiedene Art trainiert auch
+        Ihr Auge fuers Debuggen.</p>
+        <p><strong>Reale CVEs:</strong> HTML sanitizer bypasses in DOMPurify (mehrere
+        historische), Gmail AMP (2019), verschiedene CMS-Editoren. DOM Clobbering:
+        HackerOne-Reports gegen Gmail, GitHub Pages, Bug in <em>jQuery</em>
+        (globals fallback).</p>
+      </div>
+    </details>
+  </div>
+</section>
+
+<div class="banner">
+  <span class="amber">[eof]</span> end of challenge 2 :: reichen Sie alle 5 flags ueber das kurs-portal ein.<br>
+  jede flag ist an ihre matrikelnummer gebunden.
+</div>
+
+</div><!-- /.wrap -->
+
+<script>
+// ============================================================
+// GLOBAL :: Flag-Verifikation
+// Jede Flag hat einen zugehoerigen SHA-256-Hash. Der Vergleich
+// laeuft clientseitig. Wer den Hash bruteforced, gewinnt.
+// Fuer 16-hex-Flags aus HMAC-SHA256 ist das nicht realistisch,
+// und copy-paste zwischen Studenten wird beim Einreichen erkannt
+// (jede Flag ist pro Matrikel unique).
+// ============================================================
+
+const FLAG_HASHES = {
+  1: "{{CH2_F1_FLAG_HASH}}",
+  2: "{{CH2_F2_FLAG_HASH}}",
+  3: "{{CH2_F3_FLAG_HASH}}",
+  4: "{{CH2_F4_FLAG_HASH}}",
+  5: "{{CH2_F5_FLAG_HASH}}",
+};
+
+async function sha256Hex(s) {
+  const buf = new TextEncoder().encode(s);
+  const hash = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function _setErr(st, msg) {
+  st.className = "status err";
+  st.textContent = msg;
+  // Trigger glitch-shake
+  st.classList.remove("shake");
+  // force reflow so re-adding restarts animation
+  void st.offsetWidth;
+  st.classList.add("shake");
+}
+
+async function _typewriter(el, text, speed) {
+  el.textContent = "";
+  for (let i = 0; i < text.length; i++) {
+    el.textContent += text[i];
+    // Respect reduced-motion by skipping delay
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) continue;
+    await new Promise(r => setTimeout(r, speed));
+  }
+}
+
+async function checkFlag(n) {
+  const inp = document.getElementById("f" + n + "-input").value.trim();
+  const st  = document.getElementById("f" + n + "-status");
+  if (!inp) {
+    _setErr(st, "[-] EMPTY INPUT. FLAG REQUIRED.");
+    return;
+  }
+  const h = await sha256Hex(inp);
+  if (h === FLAG_HASHES[n]) {
+    st.className = "status ok";
+    // Typewriter reveal
+    const lines = [
+      "[+] EXPLOIT SUCCESSFUL",
+      "[+] EXTRACTING FLAG...",
+      "[+] FLAG " + n + " :: " + inp,
+      "[+] ACCESS GRANTED"
+    ];
+    st.textContent = "";
+    const noMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (noMotion) {
+      st.textContent = lines.join("\n");
+    } else {
+      for (const line of lines) {
+        await _typewriter(st, (st.textContent ? st.textContent + "\n" : "") + line, 14);
+        // small pause between lines
+        await new Promise(r => setTimeout(r, 90));
+      }
+    }
+  } else {
+    _setErr(st, "[-] EXPLOIT FAILED. TRY AGAIN.\n[!] Flags haben Format FLAG{16 hex chars}.");
+  }
+}
+
+
+// ============================================================
+// FLAG 2 :: localStorage Tampering
+// Beim Load setzen wir role='guest'. Login-Button prueft Rolle.
+// Bei role==='admin' wird die Flag angezeigt.
+// ============================================================
+
+(function initF2(){
+  if (localStorage.getItem("role") === null) {
+    localStorage.setItem("role", "guest");
+  }
+  const badge = document.getElementById("f2-userbadge");
+  if (badge) badge.textContent = localStorage.getItem("role");
+})();
+
+function f2Login() {
+  const role = localStorage.getItem("role");
+  document.getElementById("f2-userbadge").textContent = role;
+  const panel = document.getElementById("f2-panel");
+  const reveal = document.getElementById("f2-flag-reveal");
+  const st  = document.getElementById("f2-status");
+  if (role === "admin") {
+    panel.style.display = "block";
+    reveal.textContent = "{{CH2_F2_FLAG}}";
+    st.className = "status info";
+    st.textContent = "[+] ADMIN PANEL OPEN :: copy flag to input and submit.";
+  } else {
+    panel.style.display = "none";
+    _setErr(st, "[-] ACCESS DENIED. role='" + role + "', required='admin'.");
+  }
+}
+
+function f2Reset() {
+  localStorage.setItem("role", "guest");
+  document.getElementById("f2-userbadge").textContent = "guest";
+  document.getElementById("f2-panel").style.display = "none";
+  const st = document.getElementById("f2-status");
+  st.className = "status info";
+  st.textContent = "[i] role reset :: guest.";
+}
+
+
+// ============================================================
+// FLAG 3 :: Regex Bypass
+// Naive Regex akzeptiert nur ^[A-Z]{4}-\d{4}$
+// Der echte Coupon hat aber ein anderes Format (personalisiert).
+// Student muss f3_validate patchen oder f3_reveal direkt rufen.
+// ============================================================
+
+const F3_COUPON_HASH = "{{CH2_F3_COUPON_HASH}}";
+const F3_NAIVE_REGEX = /^[A-Z]{4}-\d{4}$/;
+
+function f3_validate(code) {
+  // "Client-side pre-check", hier absichtlich zu strikt
+  return F3_NAIVE_REGEX.test(code);
+}
+
+async function f3_reveal(code) {
+  const h = await sha256Hex(code);
+  const box = document.getElementById("f3-result");
+  if (h === F3_COUPON_HASH) {
+    box.innerHTML = '<div class="status ok" style="display:block;">[+] COUPON ACCEPTED :: FLAG <code>{{CH2_F3_FLAG}}</code></div>';
+  } else {
+    box.innerHTML = '<div class="status err" style="display:block;">[-] COUPON HASH MISMATCH. only the printed coupon is valid.</div>';
+  }
+}
+
+function f3_submit() {
+  const code = document.getElementById("f3-coupon").value.trim();
+  const box = document.getElementById("f3-result");
+  if (!f3_validate(code)) {
+    box.innerHTML = '<div class="status err" style="display:block;">[-] INVALID FORMAT :: expected 4x[A-Z] + "-" + 4x[0-9].</div>';
+    return;
+  }
+  f3_reveal(code);
+}
+
+
+// ============================================================
+// FLAG 4 :: Prototype Pollution + Obfuscated Check
+// Unsicherer deepMerge. Danach Check ob user.isAdmin. Wenn ja,
+// wird die Flag XOR-entschluesselt.
+// ============================================================
+
+const F4_FLAG_CIPHERTEXT_HEX = "{{CH2_F4_FLAG_CIPHERTEXT_HEX}}";
+const F4_XOR_KEY_B64 = "{{CH2_F4_XOR_KEY_B64}}";
+
+// Absichtlich verwundbarer rekursiver Merge (nach dem Muster von lodash.merge
+// vor CVE-2019-10744). Kein hasOwnProperty-Check, kein Blacklist-Filter fuer
+// __proto__.
+function f4_deepMerge(target, source) {
+  for (const key in source) {
+    if (typeof source[key] === "object" && source[key] !== null) {
+      if (typeof target[key] !== "object" || target[key] === null) {
+        target[key] = {};
+      }
+      f4_deepMerge(target[key], source[key]);
+    } else {
+      target[key] = source[key];
+    }
+  }
+  return target;
+}
+
+let f4_user = { name: "guest" };
+
+function f4_reset() {
+  f4_user = { name: "guest" };
+  document.getElementById("f4-result").innerHTML =
+    '<div class="status info" style="display:block;">[i] NEW USER :: isAdmin inherited from Object.prototype? ' +
+    (f4_user.isAdmin === true ? "<strong>YES</strong>" : "no") + '</div>';
+}
+
+function f4_apply() {
+  const box = document.getElementById("f4-result");
+  let payload;
+  try {
+    payload = JSON.parse(document.getElementById("f4-json").value);
+  } catch (e) {
+    box.innerHTML = '<div class="status err" style="display:block;">[-] JSON PARSE ERROR :: ' + e.message + '</div>';
+    return;
+  }
+  const config = {};
+  f4_deepMerge(config, payload);
+  f4_deepMerge(f4_user, config);
+
+  // Obfuskierter Check + Reveal
+  /* eslint-disable no-eval */
+  const _c = "{{CH2_F4_OBFUSCATED_CHECK}}";
+  try {
+    const fn = new Function("user", "cipher_hex", "key_b64", atob(_c));
+    const result = fn(f4_user, F4_FLAG_CIPHERTEXT_HEX, F4_XOR_KEY_B64);
+    if (result) {
+      box.innerHTML = '<div class="status ok" style="display:block;">[+] isAdmin CONFIRMED :: FLAG <code>' + result + '</code></div>';
+    } else {
+      box.innerHTML = '<div class="status err" style="display:block;">[-] NOT ADMIN. config merged, but check failed.</div>';
+    }
+  } catch (e) {
+    box.innerHTML = '<div class="status err" style="display:block;">[-] CHECK ERROR :: ' + e.message + '</div>';
+  }
+}
+
+
+// ============================================================
+// FLAG 5 :: DOM Clobbering
+// "Sicherer" HTML-Renderer: strippt <script>, javascript:-URLs,
+// on*-Attribute, aber NICHT <form>/<input>. Genau darueber
+// clobbern wir window.appConfig.unlockFlag.value.
+// ============================================================
+
+const F5_EXPECTED_HASH = "{{CH2_F5_HIDDEN_VALUE_HASH}}";
+const F5_FLAG = "{{CH2_F5_FLAG}}";
+
+// Hidden-Value als DOM-Kommentar (der Student findet ihn nur wenn er
+// den Bereich inspiziert). Der Wert ist SHA-256 auf einem personalisierten String.
+// <!-- F5-HIDDEN: {{CH2_F5_HIDDEN_VALUE}} -->
+
+function f5_sanitize(html) {
+  // Naiver Sanitizer, Blacklist-basiert, KEINE echte Sanitization.
+  // Er strippt <script>, javascript:-URLs und on*=-Handler.
+  // Er strippt aber NICHT <form>, <input>, <img> ohne Handler, <a href="#..">
+  let out = html;
+  out = out.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "");
+  out = out.replace(/<script\b[^>]*>/gi, "");
+  out = out.replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+  out = out.replace(/javascript:/gi, "");
+  return out;
+}
+
+function f5_render() {
+  const raw = document.getElementById("f5-html").value;
+  const clean = f5_sanitize(raw);
+  document.getElementById("f5-sandbox").innerHTML = clean;
+
+  setTimeout(async () => {
+    const box = document.getElementById("f5-result");
+    try {
+      const cfg = window.appConfig;
+      const val = cfg && cfg.unlockFlag && cfg.unlockFlag.value;
+      if (!val) {
+        box.innerHTML = '<div class="status info" style="display:block;">[i] HTML RENDERED :: appConfig.unlockFlag.value not set.</div>';
+        return;
+      }
+      const h = await sha256Hex(val);
+      if (h === F5_EXPECTED_HASH) {
+        box.innerHTML = '<div class="status ok" style="display:block;">[+] DOM CLOBBERING SUCCESSFUL :: FLAG <code>' + F5_FLAG + '</code></div>';
+      } else {
+        box.innerHTML = '<div class="status err" style="display:block;">[-] appConfig.unlockFlag.value set (' + String(val).slice(0, 40) + '...) :: hash mismatch.</div>';
+      }
+    } catch (e) {
+      box.innerHTML = '<div class="status err" style="display:block;">[-] CHECK ERROR :: ' + e.message + '</div>';
+    }
+  }, 50);
+}
+
+function f5_reset() {
+  document.getElementById("f5-sandbox").innerHTML = "";
+  document.getElementById("f5-result").innerHTML = "";
+  // Achtung: window.appConfig kann NICHT einfach ge-null-t werden, wenn es
+  // durch ein DOM-Element clobbert wurde. Man muesste das Element entfernen.
+  // Genau das ist Teil der Gefahr: einmal clobbert, bleibt es bis DOM-Reset.
+}
+
+
+// ============================================================
+// localStorage-Restore fuer Flag-Inputs (kleine QoL)
+// ============================================================
+(function restoreInputs() {
+  const keys = ["f1-input", "f2-input", "f3-input", "f4-input", "f5-input"];
+  keys.forEach(k => {
+    const el = document.getElementById(k);
+    if (!el) return;
+    const saved = localStorage.getItem("ctf2:" + k);
+    if (saved) el.value = saved;
+    el.addEventListener("input", () => {
+      localStorage.setItem("ctf2:" + k, el.value);
+    });
+  });
+})();
+</script>
+
+</body>
+</html>
