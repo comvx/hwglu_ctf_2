@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HWG-LU // CTF Session Manager v2.0</title>
+<title>HWG-LU // CTF Session Manager v3.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -110,75 +110,6 @@
   .boot .ok    { color: var(--phosphor); }
   .boot .warn  { color: var(--alarm); }
 
-  .prompt {
-    color: var(--phosphor-dim);
-    font-size: 13px;
-    margin: 0 0 6px;
-  }
-  .prompt .user { color: var(--phosphor); }
-  .prompt .path { color: var(--amber); }
-  .prompt .cmd  { color: var(--phosphor); }
-
-  .input-line {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin: 8px 0 4px;
-    flex-wrap: wrap;
-  }
-  .input-line .dollar {
-    color: var(--phosphor-dim);
-    font-weight: 700;
-    user-select: none;
-  }
-
-  input[type="text"] {
-    background: #000;
-    color: var(--phosphor);
-    border: 1px solid var(--phosphor-dim);
-    padding: 10px 12px;
-    font-family: inherit;
-    font-size: 14px;
-    flex: 1 1 220px;
-    min-width: 200px;
-    caret-color: var(--amber);
-    outline: none;
-    border-radius: 0;
-    transition: border-color 0.12s ease;
-  }
-  input[type="text"]:focus {
-    border-color: var(--phosphor);
-    box-shadow: 0 0 0 1px var(--phosphor);
-  }
-  input::placeholder { color: var(--phosphor-deep); opacity: 1; }
-
-  button {
-    background: transparent;
-    border: 1px solid var(--phosphor);
-    color: var(--phosphor);
-    padding: 9px 18px;
-    font-family: inherit;
-    font-size: 12.5px;
-    font-weight: 500;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    cursor: pointer;
-    border-radius: 0;
-    transition: background 0.12s ease, color 0.12s ease;
-  }
-  button:hover,
-  button:focus-visible {
-    background: var(--phosphor);
-    color: #000;
-    outline: none;
-  }
-  button:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-    background: transparent;
-    color: var(--phosphor);
-  }
-
   .cursor {
     display: inline-block;
     width: 0.6em;
@@ -192,28 +123,6 @@
       51%, 100% { opacity: 0; }
     }
   }
-
-  .hint {
-    color: var(--phosphor-deep);
-    font-size: 12px;
-    margin-top: 14px;
-    letter-spacing: 0.02em;
-  }
-  .hint code { color: var(--amber); }
-
-  #log {
-    margin-top: 18px;
-    padding-top: 12px;
-    border-top: 1px solid var(--phosphor-deep);
-    font-size: 12.5px;
-    line-height: 1.65;
-    color: var(--phosphor-dim);
-    white-space: pre-wrap;
-    min-height: 40px;
-  }
-  #log .ok   { color: var(--phosphor); }
-  #log .warn { color: var(--amber); }
-  #log .err  { color: var(--alarm); }
 
   .err-box {
     display: none;
@@ -243,43 +152,14 @@
 
 <div class="wrap" id="shell">
 <pre class="header">╔═══════════════════════════════════════╗
-║  HWG-LU // CTF SESSION MANAGER v2.0   ║
+║  HWG-LU // CTF SESSION MANAGER v3.0   ║
 ╚═══════════════════════════════════════╝</pre>
 
 <div class="boot" id="boot">
-<span class="amber">[boot]</span> initializing session shell...
-<span class="ok">[+]</span> crypto module          <span class="ok">ok</span>
-<span class="ok">[+]</span> flag oracle            <span class="ok">online</span>
-<span class="ok">[+]</span> personalization layer  <span class="ok">standby</span>
+<span class="amber">[boot]</span> initializing session shell<span class="cursor">▊</span>
 </div>
-
-<div class="prompt">
-  <span class="user">guest@hwglu</span>:<span class="path">~/ctf/ch2</span>$ <span class="cmd">authenticate --uid=</span><span class="cursor">▊</span>
-</div>
-
-<form id="loginForm" autocomplete="off" onsubmit="return false;">
-  <div class="input-line">
-    <span class="dollar">$</span>
-    <input
-      type="text"
-      id="uid"
-      inputmode="text"
-      autocomplete="off"
-      spellcheck="false"
-      placeholder="matrikelnummer eingeben..."
-      maxlength="32"
-      required
-    >
-    <button type="submit" id="submitBtn">&gt; connect</button>
-  </div>
-  <div class="hint">
-    UID = Matrikelnummer. Flags werden pro UID personalisiert.
-    Optional: <code>?uid=12345678</code> in der URL.
-  </div>
-</form>
 
 <div class="err-box" id="err"></div>
-<div id="log"></div>
 
 </div><!-- /.wrap -->
 
@@ -289,116 +169,82 @@
 "use strict";
 
 // ------------------------------------------------------------------
-// State
+// v3: kein Matrikel-Prompt mehr. Session-Cookie kommt vom Server.
+// Ablauf: kurze Boot-Sequenz → /api/flags fetchen → challenge.html
+// mit Placeholders substituieren → in place rendern.
 // ------------------------------------------------------------------
-const $uid     = document.getElementById("uid");
-const $form    = document.getElementById("loginForm");
-const $btn     = document.getElementById("submitBtn");
-const $log     = document.getElementById("log");
-const $err     = document.getElementById("err");
-const $fade    = document.getElementById("fade");
+const $boot = document.getElementById("boot");
+const $err  = document.getElementById("err");
+const $fade = document.getElementById("fade");
 const noMotion = window.matchMedia
   && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // ------------------------------------------------------------------
-// URL / sessionStorage prefill
+// Optional: ?logout=1 löscht den localStorage-Cache (Session-Cookie
+// selbst ist HttpOnly und kann von JS nicht gelöscht werden — muss
+// per Browser oder DevTools rausgeputzt werden).
 // ------------------------------------------------------------------
-(function prefill() {
-  const params = new URLSearchParams(location.search);
-  const fromUrl   = params.get("uid") || params.get("matrikel");
-  const fromStore = sessionStorage.getItem("ctf2:matrikel");
-  const val = fromUrl || fromStore;
-  if (val) $uid.value = val.trim();
-  $uid.focus();
-})();
-
-// ------------------------------------------------------------------
-// Auto-connect if session cached
-// ------------------------------------------------------------------
-(function autoConnect() {
-  const cached = sessionStorage.getItem("ctf2:placeholders");
-  const cachedUid = sessionStorage.getItem("ctf2:matrikel");
+(function maybeClearCache() {
   const params = new URLSearchParams(location.search);
   if (params.has("logout")) {
-    sessionStorage.removeItem("ctf2:placeholders");
-    sessionStorage.removeItem("ctf2:matrikel");
+    try { localStorage.removeItem("ctf2:placeholders"); } catch {}
     history.replaceState({}, "", location.pathname);
-    return;
-  }
-  if (cached && cachedUid) {
-    // Fast-path: skip typewriter, jump right in
-    try {
-      const placeholders = JSON.parse(cached);
-      renderChallenge(placeholders, /*fast=*/true);
-    } catch { /* corrupt cache — ignore */ }
   }
 })();
 
 // ------------------------------------------------------------------
-// Submit handler
+// Boot-Sequenz + Fetch parallel
 // ------------------------------------------------------------------
-$form.addEventListener("submit", async (ev) => {
-  ev.preventDefault();
-  const uid = $uid.value.trim();
-  hideErr();
-  if (!uid) { showErr("[-] EMPTY UID. authentication aborted."); return; }
-  if (!/^[0-9A-Za-z._-]{3,32}$/.test(uid)) {
-    showErr("[-] INVALID UID FORMAT :: nur Ziffern/Buchstaben, 3-32 Zeichen.");
-    return;
-  }
-
-  $btn.disabled = true;
-  $uid.disabled = true;
-  $log.innerHTML = "";
-
-  const steps = [
-    { text: "[+] resolving oracle endpoint...", cls: "" },
-    { text: "[+] tls handshake                 ok", cls: "ok" },
-    { text: "[+] session key negotiated        ok", cls: "ok" },
-    { text: "[+] loading exploit chain         ok", cls: "ok" },
+(async function boot() {
+  const bootLines = [
+    { text: "[+] crypto module          ok", cls: "ok" },
+    { text: "[+] flag oracle            online", cls: "ok" },
+    { text: "[+] session cookie         reading...", cls: "amber" },
+    { text: "[+] tls handshake          ok", cls: "ok" },
+    { text: "[+] loading exploit chain  ok", cls: "ok" },
   ];
 
+  // Fetch startet SOFORT (parallel zur Boot-Animation)
   const fetchPromise = fetch("/api/flags", {
     method: "POST",
+    credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ matrikel: uid }),
+    body: "{}",
   });
 
-  await typewriteLines(steps, /*totalMs=*/900);
+  await typewriteLines(bootLines, /*totalMs=*/700);
 
   let resp, data;
   try {
     resp = await fetchPromise;
     data = await resp.json();
   } catch (e) {
-    appendLog("[-] network error :: " + e.message, "err");
-    $btn.disabled = false; $uid.disabled = false;
+    showErr("[-] network error :: " + e.message);
     return;
   }
 
   if (!resp.ok || !data.ok) {
-    appendLog("[-] oracle rejected request :: "
-      + (data && data.error ? data.error : ("http " + resp.status)), "err");
-    $btn.disabled = false; $uid.disabled = false;
+    showErr("[-] oracle rejected request :: "
+      + (data && data.error ? data.error : ("http " + resp.status)));
     return;
   }
 
-  appendLog("[+] session established          ok", "ok");
-  await sleep(220);
-  appendLog("[+] delivering personalized payload...", "warn");
-  await sleep(180);
+  appendLog("[+] session id             " + data.session_id, "ok");
+  appendLog("[+] session ts             " + data.unix_ts, "ok");
+  appendLog("[+] delivering personalized payload...", "amber");
+  await sleep(200);
 
-  sessionStorage.setItem("ctf2:matrikel", uid);
-  sessionStorage.setItem("ctf2:placeholders", JSON.stringify(data.placeholders));
+  try { localStorage.setItem("ctf2:placeholders", JSON.stringify(data.placeholders)); }
+  catch {}
 
   await fadeOut();
-  renderChallenge(data.placeholders, /*fast=*/false);
-});
+  await renderChallenge(data.placeholders);
+})();
 
 // ------------------------------------------------------------------
 // Challenge renderer
 // ------------------------------------------------------------------
-async function renderChallenge(placeholders, fast) {
+async function renderChallenge(placeholders) {
   let template;
   try {
     const r = await fetch("/challenge.html", { cache: "no-store" });
@@ -410,9 +256,7 @@ async function renderChallenge(placeholders, fast) {
     document.body.textContent = "[fatal] failed to load challenge: " + e.message;
     return;
   }
-
   const html = substituteAll(template, placeholders);
-
   // document.open/write/close ist der einzige zuverlässige Weg,
   // ein komplettes HTML-Dokument inkl. inline-<script>s zu ersetzen.
   document.open("text/html", "replace");
@@ -421,13 +265,11 @@ async function renderChallenge(placeholders, fast) {
 }
 
 function substituteAll(template, placeholders) {
-  // Alle {{KEY}}-Vorkommen ersetzen. Reihenfolge egal, weil Keys
-  // untereinander disjunkt sind.
   return template.replace(/\{\{([A-Z0-9_]+)\}\}/g, (m, k) => {
     if (Object.prototype.hasOwnProperty.call(placeholders, k)) {
       return placeholders[k];
     }
-    return m; // unbekannter Placeholder: unangetastet lassen (fällt beim QA auf)
+    return m;
   });
 }
 
@@ -435,10 +277,10 @@ function substituteAll(template, placeholders) {
 // UI helpers
 // ------------------------------------------------------------------
 function appendLog(text, cls) {
-  const span = document.createElement("div");
-  if (cls) span.className = cls;
-  span.textContent = text;
-  $log.appendChild(span);
+  const line = document.createElement("div");
+  if (cls) line.className = cls;
+  line.textContent = text;
+  $boot.appendChild(line);
 }
 
 async function typewriteLines(lines, totalMs) {
@@ -446,7 +288,7 @@ async function typewriteLines(lines, totalMs) {
     for (const l of lines) appendLog(l.text, l.cls);
     return;
   }
-  const per = Math.max(120, Math.floor(totalMs / lines.length));
+  const per = Math.max(90, Math.floor(totalMs / lines.length));
   for (const l of lines) {
     appendLog(l.text, l.cls);
     await sleep(per);
@@ -458,10 +300,6 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function showErr(msg) {
   $err.textContent = msg;
   $err.classList.add("show");
-}
-function hideErr() {
-  $err.classList.remove("show");
-  $err.textContent = "";
 }
 
 async function fadeOut() {

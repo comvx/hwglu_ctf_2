@@ -1,8 +1,8 @@
 {
   "name": "hwglu-ctf-2-web",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "private": true,
-  "description": "HWG-LU IT-Sicherheit WS 2025/26 — CTF Challenge 2: Web-Attacks (client-side). Static site + Cloudflare Pages Function for per-student flag personalization.",
+  "description": "HWG-LU IT-Sicherheit WS 2025/26 — CTF Challenge 2: Web-Attacks (client-side). Static site + Cloudflare Pages Function; per-session flag personalization via HttpOnly session cookie + per-second unix timestamp (no matrikel prompt).",
   "scripts": {
     "build": "echo 'no build step — static files in public/, functions in functions/'",
     "dev": "npx wrangler pages dev public --compatibility-date=2024-11-01",

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CTF Challenge 2 :: Web-Attacks :: {{NAME}}</title>
+<title>CTF Challenge 2 :: Web-Attacks :: Session {{SESSION_ID}}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -548,9 +548,11 @@
   HWG-LU IT-SICHERHEIT :: WS 2025/26
   Challenge 2: Web-Attacks (client-side)
 
-  Persoenliche Datei fuer: {{NAME}} ({{MATRIKEL}})
-  Alle Flags sind pro Student unique. Absprache/Copy von Flags
-  eines anderen Kommilitonen wird beim Einreichen erkannt.
+  Persoenliche Session: {{SESSION_ID}}  (gestartet {{SESSION_START}})
+  Alle Flags sind pro Session unique und tragen die Session-ID sowie
+  den Timestamp bereits IM Flag-String. Absprache/Copy zwischen
+  Studierenden faellt beim Einreichen sofort auf (fremde Session-ID,
+  fremder Timestamp).
 
   Viel Erfolg. Wenn Sie hier drin nach der Flag suchen:
   Das ist grundsaetzlich der richtige Instinkt. Aber nicht jede
@@ -564,9 +566,9 @@
 <div class="wrap">
 
 <pre class="session-card">┌─────────────────────────────────────────────────────────────┐
-│ SESSION  : CH2 / WEB / CLIENT-SIDE                          │
-│ USER     : {{NAME}}
-│ UID      : {{MATRIKEL}}
+│ CHALLENGE: CH2 / WEB / CLIENT-SIDE                          │
+│ SESSION  : {{SESSION_ID}}
+│ STARTED  : {{SESSION_START}}
 │ FLAGS    : 5                                                │
 └─────────────────────────────────────────────────────────────┘</pre>
 
@@ -958,9 +960,67 @@
   </div>
 </section>
 
+<!-- ============================================================
+     SESSION REPORT
+     ============================================================ -->
+<pre class="ascii-divider">╔═════════════════════════════════════════════════════════════╗
+║  SESSION REPORT :: MOODLE-EINREICHUNG                       ║
+╚═════════════════════════════════════════════════════════════╝</pre>
+
+<section class="flag" id="session-report">
+  <div class="prompt-line">
+    <span class="user">root@ctf</span>:<span class="path">~/ch2/report</span>$ <span class="cmd">cat session.log</span><span class="cursor">▊</span>
+  </div>
+  <div class="story">
+    Diese Session ist eindeutig durch <code>{{SESSION_ID}}</code> und
+    <code>{{SESSION_UNIX_TS}}</code> identifiziert. Jede der 5 Flags traegt
+    diese Werte bereits IN sich (<code>FLAG{session-timestamp-hmac}</code>) —
+    der Dozent kann jede Flag serverseitig gegen das Master-Secret pruefen und
+    doppelte Session-IDs sofort erkennen.
+    <br><br>
+    <strong>Einreichung ueber Moodle:</strong> Kopieren Sie den folgenden
+    Block als Ganzes in das Moodle-Formular und ergaenzen Sie Ihre
+    Matrikelnummer im dortigen Feld.
+  </div>
+
+  <pre id="session-report-block" style="
+    margin:14px 0 10px;
+    padding:14px 16px;
+    border:1px solid var(--phosphor-dim);
+    background:#000;
+    color:var(--phosphor);
+    font-size:12.5px;
+    line-height:1.55;
+    white-space:pre;
+    overflow-x:auto;
+    text-shadow: 0 0 2px rgba(0,255,65,0.4);
+  ">=== HWG-LU CTF 2 :: SESSION REPORT ===
+Session ID  : {{SESSION_ID}}
+Started     : {{SESSION_START}}
+Unix TS     : {{SESSION_UNIX_TS}}
+
+Flag 01 : {{CH2_F1_FLAG}}
+Flag 02 : {{CH2_F2_FLAG}}
+Flag 03 : {{CH2_F3_FLAG}}
+Flag 04 : (aus F4-Attacke rekonstruiert — dort einsetzen)
+Flag 05 : {{CH2_F5_FLAG}}
+=== END REPORT ===</pre>
+
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <button type="button" id="session-copy-btn"
+      style="background:transparent; border:1px solid var(--phosphor);
+             color:var(--phosphor); padding:9px 18px; font-family:inherit;
+             font-size:12.5px; font-weight:500; letter-spacing:0.1em;
+             text-transform:uppercase; cursor:pointer;">
+      &gt; copy report
+    </button>
+    <span id="session-copy-status" style="align-self:center; color:var(--phosphor-dim);"></span>
+  </div>
+</section>
+
 <div class="banner">
-  <span class="amber">[eof]</span> end of challenge 2 :: reichen Sie alle 5 flags ueber das kurs-portal ein.<br>
-  jede flag ist an ihre matrikelnummer gebunden.
+  <span class="amber">[eof]</span> end of challenge 2 :: alle 5 flags + session-report ueber Moodle einreichen.<br>
+  jede flag ist an ihre session-id + timestamp gebunden.
 </div>
 
 </div><!-- /.wrap -->
@@ -972,7 +1032,7 @@
 // laeuft clientseitig. Wer den Hash bruteforced, gewinnt.
 // Fuer 16-hex-Flags aus HMAC-SHA256 ist das nicht realistisch,
 // und copy-paste zwischen Studenten wird beim Einreichen erkannt
-// (jede Flag ist pro Matrikel unique).
+// (jede Flag ist pro Session-ID + Timestamp unique).
 // ============================================================
 
 const FLAG_HASHES = {
@@ -1259,6 +1319,45 @@ function f5_reset() {
     el.addEventListener("input", () => {
       localStorage.setItem("ctf2:" + k, el.value);
     });
+  });
+})();
+
+
+// ============================================================
+// SESSION REPORT :: copy-to-clipboard
+// ============================================================
+(function sessionReport() {
+  const btn = document.getElementById("session-copy-btn");
+  const block = document.getElementById("session-report-block");
+  const status = document.getElementById("session-copy-status");
+  if (!btn || !block) return;
+
+  btn.addEventListener("click", async () => {
+    const text = block.textContent;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // Fallback fuer aeltere Browser
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      if (status) {
+        status.textContent = "[+] report kopiert (" + text.length + " chars)";
+        status.style.color = "var(--phosphor)";
+      }
+    } catch (e) {
+      if (status) {
+        status.textContent = "[-] copy fehlgeschlagen :: " + e.message;
+        status.style.color = "var(--alarm)";
+      }
+    }
   });
 })();
 </script>
